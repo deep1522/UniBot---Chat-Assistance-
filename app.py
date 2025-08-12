@@ -3,79 +3,87 @@ import os
 import sys
 import boto3
 import streamlit as st
+from botocore.exceptions import ClientError
+from dotenv import load_dotenv
 
-# CHANGE: Using the recommended langchain_pinecone library for vector store integration.
-from langchain_pinecone import PineconeVectorStore
+# FIX: Import GoogleDriveLoader and related dependencies
+from langchain_community.document_loaders import GoogleDriveLoader, PyPDFDirectoryLoader
 from langchain_community.embeddings import BedrockEmbeddings
 from langchain_community.llms.bedrock import Bedrock
-
+from langchain_pinecone import PineconeVectorStore
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_community.document_loaders import PyPDFDirectoryLoader
-
 from langchain.prompts import PromptTemplate
 from langchain.chains import RetrievalQA
 
-# Import the Pinecone client to manage the index, but not for from_documents.
 from pinecone import Pinecone as PineconeClient
-from dotenv import load_dotenv
+
+# Load environment variables
 load_dotenv()
 
+# FIX: Revert to using st.secrets for Streamlit Cloud deployment
+# The os.getenv approach is less reliable on Streamlit Cloud.
+aws_access_key_id = st.secrets["AWS_ACCESS_KEY_ID"]
+aws_secret_access_key = st.secrets["AWS_SECRET_ACCESS_KEY"]
+aws_region_name = st.secrets.get("AWS_DEFAULT_REGION", "us-east-1") # Use a default region if not specified
+
 # Set up the Bedrock client and embeddings model
-bedrock = boto3.client(service_name="bedrock-runtime",region_name='us-east-1')
-# Note: The 'amazon.titan-embed-text-v2:0' model produces vectors with a dimension of 1024.
+bedrock = boto3.client(
+    service_name="bedrock-runtime", 
+    region_name=aws_region_name,
+    aws_access_key_id=aws_access_key_id,
+    aws_secret_access_key=aws_secret_access_key
+)
 bedrock_embeddings = BedrockEmbeddings(model_id="amazon.titan-embed-text-v2:0", client=bedrock)
 
 # Setup Pinecone with your API key from environment variables
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
-
-# Initialize the Pinecone client
 pc = PineconeClient(api_key=PINECONE_API_KEY)
 
 INDEX_NAME = "langchain"  # Pinecone index name
 
-# Data ingestion remains unchanged
+# FIX: Update data_ingestion to use GoogleDriveLoader with credentials
 def data_ingestion():
-    loader = PyPDFDirectoryLoader("data")
+    # To use Google Drive Loader, you need to set up a service account and save the
+    # key file as `credentials.json`.
+    # Make sure to set the `GOOGLE_APPLICATION_CREDENTIALS` environment variable in Streamlit secrets
+    # to point to this file.
+    # IMPORTANT: Replace 'YOUR_FOLDER_ID' with the actual ID of your Google Drive folder.
+    # The folder ID is a long string of letters and numbers, not a human-readable name.
+    GOOGLE_DRIVE_FOLDER_ID = "RAG_APPLICATION"
+
+    loader = GoogleDriveLoader(
+        folder_id=GOOGLE_DRIVE_FOLDER_ID, 
+        recursive=False
+    )
     documents = loader.load()
 
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=10000, chunk_overlap=1000)
     docs = text_splitter.split_documents(documents)
     return docs
 
-# CHANGE: This function now uses the correct PineconeVectorStore class
-# from the langchain_pinecone library to ingest documents.
 def get_vector_store(docs):
-    # This static method handles the entire process: creating embeddings
-    # and uploading them to the Pinecone index.
-    # IMPORTANT: The Pinecone index dimension must match the embedding model's dimension (1024).
-    vectorstore_pinecone = PineconeVectorStore.from_documents(
-        docs,
-        embedding=bedrock_embeddings,
-        index_name=INDEX_NAME,
-    )
-    return vectorstore_pinecone
+    try:
+        vectorstore_pinecone = PineconeVectorStore.from_documents(
+            docs,
+            embedding=bedrock_embeddings,
+            index_name=INDEX_NAME,
+        )
+        return vectorstore_pinecone
+    except Exception as e:
+        st.error(
+            f"An error occurred while creating the vector store. "
+            f"Please check your AWS and Pinecone configurations. "
+            f"Full error: {e}"
+        )
+        return None
 
 def get_claude_llm():
     llm = Bedrock(model_id="ai21.j2-mid-v1", client=bedrock, model_kwargs={'maxTokens': 512})
     return llm
 
 def get_llama2_llm():
-    # Corrected model ID for llama3-70b
     llm = Bedrock(model_id="meta.llama3-70b-instruct-v1:0", client=bedrock, model_kwargs={'max_gen_len': 512})
     return llm
-
-# prompt_template = """
-# Human: Use the following pieces of context to provide a 
-# concise answer to the question at the end but use at least summarize with 
-# 250 words with detailed explanations. If you don't know the answer, 
-# just say that you don't know, don't try to make up an answer.
-# <context>
-# {context}
-# </context>
-
-# Question: {question}
-
-# Assistant:"""
 
 prompt_template = """
 You are an assistant that answers questions based only on the provided context.
@@ -121,14 +129,12 @@ def main():
         if st.button("Update"):
             with st.spinner("Processing..."):
                 docs = data_ingestion()
-                # upload embeddings to Pinecone index
-                get_vector_store(docs)
-                st.success("✅ You are up-to-date.")
+                if docs:
+                    get_vector_store(docs)
+                    st.success("✅ You are up-to-date.")
 
     if st.button("Search"):
         with st.spinner("Processing..."):
-            # CHANGE: Load the vector store from an existing Pinecone index.
-            # This is the correct method for the new PineconeVectorStore class.
             vectorstore_pinecone = PineconeVectorStore.from_existing_index(
                 index_name=INDEX_NAME,
                 embedding=bedrock_embeddings
