@@ -44,17 +44,32 @@ INDEX_NAME = "langchain"  # Pinecone index name
 
 # FIX: Function to handle Google credentials from Streamlit secrets
 def setup_google_credentials():
-    """Reads Google credentials from Streamlit secrets and sets up a temporary file."""
+    """
+    Reads Google credentials from Streamlit secrets, validates the JSON,
+    and sets up a temporary file for authentication.
+    """
     if "GOOGLE_APPLICATION_CREDENTIALS" in st.secrets:
-        # Create a temporary file to store the credentials
-        with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".json") as temp_file:
-            # Write the JSON content from secrets into the temporary file
-            temp_file.write(st.secrets["GOOGLE_APPLICATION_CREDENTIALS"])
-            temp_file_path = temp_file.name
-        
-        # Set the environment variable to the path of the temporary file
-        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = temp_file_path
-        st.success("Google credentials set up successfully.")
+        try:
+            # First, check if the content is a valid JSON string
+            credentials_json = st.secrets["GOOGLE_APPLICATION_CREDENTIALS"]
+            json.loads(credentials_json)
+
+            # If it's valid, create a temporary file to store the credentials
+            with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".json") as temp_file:
+                temp_file.write(credentials_json)
+                temp_file_path = temp_file.name
+            
+            # Set the environment variable to the path of the temporary file
+            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = temp_file_path
+            st.success("Google credentials set up successfully.")
+
+        except json.JSONDecodeError as e:
+            st.error(f"Error: Invalid JSON format in your `GOOGLE_APPLICATION_CREDENTIALS` secret. Please check for syntax errors. Details: {e}")
+            # Do not proceed with the loader if credentials are bad
+            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = ""
+        except Exception as e:
+            st.error(f"An unexpected error occurred while setting up Google credentials. Details: {e}")
+            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = ""
 
 # FIX: Update data_ingestion to use GoogleDriveLoader with credentials
 def data_ingestion():
@@ -69,7 +84,7 @@ def data_ingestion():
     # - google-auth-oauthlib
     # IMPORTANT: Replace 'YOUR_FOLDER_ID' with the actual ID of your Google Drive folder.
     # The folder ID is a long string of letters and numbers, not a human-readable name.
-    GOOGLE_DRIVE_FOLDER_ID = "YOUR_FOLDER_ID"
+    GOOGLE_DRIVE_FOLDER_ID = "RAG_APPLICATION"
     
     loader = GoogleDriveLoader(
         folder_id=GOOGLE_DRIVE_FOLDER_ID, 
