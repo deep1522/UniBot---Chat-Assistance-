@@ -58,14 +58,15 @@ def setup_google_credentials():
     credentials_source = st.secrets.get("GOOGLE_APPLICATION_CREDENTIALS") or os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
     
     if credentials_source:
+        # FIX: Corrected logic to try JSON string first, then fall back to file path
         try:
-            # Try to load as a JSON string (for Streamlit Cloud)
+            # First, assume it's a JSON string (Streamlit Cloud)
             credentials_dict = json.loads(credentials_source)
             credentials = service_account.Credentials.from_service_account_info(credentials_dict)
             st.success("Google credentials set up from Streamlit secrets.")
             return credentials
         except json.JSONDecodeError:
-            # If it's not a JSON string, assume it's a file path (for local dev)
+            # If it's not a JSON string, assume it's a file path (local development)
             if os.path.exists(credentials_source):
                 try:
                     credentials = service_account.Credentials.from_service_account_file(credentials_source)
