@@ -63,14 +63,12 @@ def setup_google_credentials():
             # First, assume it's a JSON string (Streamlit Cloud)
             credentials_dict = json.loads(credentials_source)
             credentials = service_account.Credentials.from_service_account_info(credentials_dict)
-            st.success("Google credentials set up from Streamlit secrets.")
             return credentials
         except json.JSONDecodeError:
             # If it's not a JSON string, assume it's a file path (local development)
             if os.path.exists(credentials_source):
                 try:
                     credentials = service_account.Credentials.from_service_account_file(credentials_source)
-                    st.success("Google credentials set up from local file.")
                     return credentials
                 except Exception as e:
                     st.error(f"Error loading local credentials file. Details: {e}")
@@ -88,7 +86,6 @@ def setup_google_credentials():
 # --- Application Functions ---
 def data_ingestion(gdrive_credentials):
     if gdrive_credentials is None:
-        st.error("Google Drive credentials are not available. Document ingestion failed.")
         return []
 
     GOOGLE_DRIVE_FOLDER_ID = "1ZB8Ur70bjRoZxrNOSOaxS6cSjcv6V1nN"
@@ -174,24 +171,10 @@ def get_response_llm(llm, vectorstore, query):
 # Define a callback function to clear the input
 def handle_search():
     """Captures and processes the query, then clears the input."""
-    if st.session_state.user_question_input:
-        with st.spinner("Processing..."):
-            user_question = st.session_state.user_question_input
-            vectorstore_pinecone = PineconeVectorStore.from_existing_index(
-                index_name=INDEX_NAME,
-                embedding=bedrock_embeddings
-            )
-            llm = get_llama2_llm()
-            response = get_response_llm(llm, vectorstore_pinecone, user_question)
-            
-            # FIX: Store the response in session state
-            st.session_state['last_response'] = response
-            st.session_state['last_question'] = user_question
-            
-            # Clear the input field after search
-            st.session_state.user_question_input = ""
-            
-          
+    # FIX: Reverted to the correct way of handling session state for button clicks
+    st.session_state['search_clicked'] = True
+    st.session_state.user_question = st.session_state.user_question_input
+    st.session_state.user_question_input = ""
 
 def main():
     st.set_page_config("Chat PDF with Pinecone")
@@ -209,10 +192,17 @@ def main():
         st.session_state['last_response'] = ""
     if 'last_question' not in st.session_state:
         st.session_state['last_question'] = ""
+    # FIX: Initialize a state variable to track the search button click
+    if 'search_clicked' not in st.session_state:
+        st.session_state.search_clicked = False
+
 
     gdrive_credentials = setup_google_credentials()
-
-    st.text_input(
+    if gdrive_credentials is None:
+        st.stop()
+    
+    # FIX: Use st.text_input without a value to prevent the APIException
+    user_question = st.text_input(
         "Here to help with your queries...", 
         key="user_question_input"
     )
@@ -241,7 +231,21 @@ def main():
 
     st.button("Search", on_click=handle_search)
 
-    # FIX: Display the last question and response in the main window
+    # FIX: Run the search logic here, outside the button click, based on session state
+    if st.session_state.search_clicked:
+        st.session_state.search_clicked = False
+        with st.spinner("Processing..."):
+            user_question = st.session_state.user_question
+            vectorstore_pinecone = PineconeVectorStore.from_existing_index(
+                index_name=INDEX_NAME,
+                embedding=bedrock_embeddings
+            )
+            llm = get_llama2_llm()
+            response = get_response_llm(llm, vectorstore_pinecone, user_question)
+            
+            st.session_state['last_response'] = response
+            st.session_state['last_question'] = user_question
+    
     if st.session_state['last_response']:
         st.write(f"**Question:** {st.session_state['last_question']}")
         st.write(st.session_state['last_response'])
