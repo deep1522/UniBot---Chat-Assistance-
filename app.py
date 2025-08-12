@@ -176,8 +176,8 @@ def main():
         st.session_state['status_message'] = ""
     if 'status_type' not in st.session_state:
         st.session_state['status_type'] = "info"
-    if 'user_question' not in st.session_state:
-        st.session_state.user_question = ""
+    if 'user_question_input' not in st.session_state:
+        st.session_state.user_question_input = ""
 
     gdrive_credentials = setup_google_credentials()
 
@@ -213,10 +213,12 @@ def main():
             )
             llm = get_llama2_llm()
             response = get_response_llm(llm, vectorstore_pinecone, user_question)
+            
+            # Display the question and response
+            st.write(f"**Question:** {user_question}")
             st.write(response)
             
-            # FIX: Clear the input field after search
-            st.session_state.user_question = ""
+            # FIX: Clear the input field for next queries
             st.session_state.user_question_input = ""
             
             st.success("✅ Anything Else?")
