@@ -49,12 +49,16 @@ def setup_google_credentials():
     """
     if "GOOGLE_APPLICATION_CREDENTIALS" in st.secrets:
         try:
-            credentials_json = st.secrets["GOOGLE_APPLICATION_CREDENTIALS"]
-            
-            # Create a dictionary from the JSON string
-            credentials_dict = json.loads(credentials_json)
+            credentials_secret_value = st.secrets["GOOGLE_APPLICATION_CREDENTIALS"]
 
-            # Create a credentials object from the dictionary
+            # FIX: Explicitly check if the secret value is a string before trying to load it as JSON.
+            if not isinstance(credentials_secret_value, str):
+                st.error("Error: `GOOGLE_APPLICATION_CREDENTIALS` secret is not a string. "
+                         "Please ensure you've pasted the JSON content directly as a single value, "
+                         "not as a TOML table.")
+                return None
+
+            credentials_dict = json.loads(credentials_secret_value)
             credentials = service_account.Credentials.from_service_account_info(credentials_dict)
             st.success("Google credentials set up successfully.")
             return credentials
