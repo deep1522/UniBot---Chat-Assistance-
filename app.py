@@ -58,40 +58,32 @@ def setup_google_credentials():
     credentials_source = st.secrets.get("GOOGLE_APPLICATION_CREDENTIALS") or os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
     
     if credentials_source:
+        # FIX: Corrected logic to try JSON string first, then fall back to file path
         try:
-            # First, try parsing as JSON string
+            # First, assume it's a JSON string (Streamlit Cloud)
             credentials_dict = json.loads(credentials_source)
-            
-            # Save to temp file so Google API can use it
-            temp_path = "/tmp/google_credentials.json"
-            with open(temp_path, "w") as f:
-                json.dump(credentials_dict, f)
-
-            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = temp_path
             credentials = service_account.Credentials.from_service_account_info(credentials_dict)
-            
             st.success("Google credentials set up from Streamlit secrets.")
             return credentials
-
         except json.JSONDecodeError:
-            # Fallback to local file
+            # If it's not a JSON string, assume it's a file path (local development)
             if os.path.exists(credentials_source):
-                os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = credentials_source
-                credentials = service_account.Credentials.from_service_account_file(credentials_source)
-                st.success("Google credentials set up from local file.")
-                return credentials
+                try:
+                    credentials = service_account.Credentials.from_service_account_file(credentials_source)
+                    st.success("Google credentials set up from local file.")
+                    return credentials
+                except Exception as e:
+                    st.error(f"Error loading local credentials file. Details: {e}")
+                    return None
             else:
-                st.error(f"Error: Provided credentials are not valid JSON and file '{credentials_source}' not found.")
+                st.error(f"Error: Credentials source is not a valid JSON string and file at path '{credentials_source}' was not found.")
                 return None
-
         except Exception as e:
-            st.error(f"Unexpected error with Google credentials: {e}")
+            st.error(f"An unexpected error occurred with Google credentials. Details: {e}")
             return None
-
     else:
         st.error("`GOOGLE_APPLICATION_CREDENTIALS` not found in secrets or environment.")
         return None
-
 
 # --- Application Functions ---
 def data_ingestion(gdrive_credentials):
@@ -109,7 +101,8 @@ def data_ingestion(gdrive_credentials):
     
     try:
         documents = loader.load()
-        text_splitter = RecursiveCharacterTextSplitter(chunk_size=10000, chunk_overlap=1000)
+        # FIX: Changed chunk size and overlap for better retrieval performance
+        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
         docs = text_splitter.split_documents(documents)
         return docs
     except Exception as e:
@@ -162,10 +155,11 @@ Assistant:
 PROMPT = PromptTemplate(template=prompt_template, input_variables=["context", "question"])
 
 def get_response_llm(llm, vectorstore, query):
+    # FIX: Increased k to retrieve more documents for a more comprehensive answer
     qa = RetrievalQA.from_chain_type(
         llm=llm,
         chain_type="stuff",
-        retriever=vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": 3}),
+        retriever=vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": 5}),
         return_source_documents=True,
         chain_type_kwargs={"prompt": PROMPT}
     )
