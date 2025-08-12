@@ -58,32 +58,40 @@ def setup_google_credentials():
     credentials_source = st.secrets.get("GOOGLE_APPLICATION_CREDENTIALS") or os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
     
     if credentials_source:
-        # FIX: Corrected logic to try JSON string first, then fall back to file path
         try:
-            # First, assume it's a JSON string (Streamlit Cloud)
+            # First, try parsing as JSON string
             credentials_dict = json.loads(credentials_source)
+            
+            # Save to temp file so Google API can use it
+            temp_path = "/tmp/google_credentials.json"
+            with open(temp_path, "w") as f:
+                json.dump(credentials_dict, f)
+
+            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = temp_path
             credentials = service_account.Credentials.from_service_account_info(credentials_dict)
+            
             st.success("Google credentials set up from Streamlit secrets.")
             return credentials
+
         except json.JSONDecodeError:
-            # If it's not a JSON string, assume it's a file path (local development)
+            # Fallback to local file
             if os.path.exists(credentials_source):
-                try:
-                    credentials = service_account.Credentials.from_service_account_file(credentials_source)
-                    st.success("Google credentials set up from local file.")
-                    return credentials
-                except Exception as e:
-                    st.error(f"Error loading local credentials file. Details: {e}")
-                    return None
+                os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = credentials_source
+                credentials = service_account.Credentials.from_service_account_file(credentials_source)
+                st.success("Google credentials set up from local file.")
+                return credentials
             else:
-                st.error(f"Error: Credentials source is not a valid JSON string and file at path '{credentials_source}' was not found.")
+                st.error(f"Error: Provided credentials are not valid JSON and file '{credentials_source}' not found.")
                 return None
+
         except Exception as e:
-            st.error(f"An unexpected error occurred with Google credentials. Details: {e}")
+            st.error(f"Unexpected error with Google credentials: {e}")
             return None
+
     else:
         st.error("`GOOGLE_APPLICATION_CREDENTIALS` not found in secrets or environment.")
         return None
+
 
 # --- Application Functions ---
 def data_ingestion(gdrive_credentials):
