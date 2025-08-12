@@ -1,3 +1,4 @@
+
 streamlit
 boto3
 langchain
@@ -9,3 +10,4 @@ google-api-python-client
 google-auth-httplib2
 google-auth-oauthlib
 unstructured
+langchain_google_community
