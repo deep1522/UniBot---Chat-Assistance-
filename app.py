@@ -155,16 +155,21 @@ Assistant:
 PROMPT = PromptTemplate(template=prompt_template, input_variables=["context", "question"])
 
 def get_response_llm(llm, vectorstore, query):
-    # FIX: Increased k to retrieve more documents for a more comprehensive answer
-    qa = RetrievalQA.from_chain_type(
-        llm=llm,
-        chain_type="stuff",
-        retriever=vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": 10}),
-        return_source_documents=True,
-        chain_type_kwargs={"prompt": PROMPT}
-    )
-    answer = qa({"query": query})
-    return answer['result']
+    # FIX: Added try...except block to handle errors during the search process
+    try:
+        # Increased k to retrieve more documents for a more comprehensive answer
+        qa = RetrievalQA.from_chain_type(
+            llm=llm,
+            chain_type="stuff",
+            retriever=vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": 10}),
+            return_source_documents=True,
+            chain_type_kwargs={"prompt": PROMPT}
+        )
+        answer = qa({"query": query})
+        return answer['result']
+    except Exception as e:
+        st.error(f"An error occurred during the search. Please check your Bedrock and Pinecone configurations. Details: {e}")
+        return "An error occurred during the search. Please check the logs."
 
 # Define a callback function to clear the input
 def clear_input():
