@@ -84,7 +84,7 @@ def data_ingestion():
     # - google-auth-oauthlib
     # IMPORTANT: Replace 'YOUR_FOLDER_ID' with the actual ID of your Google Drive folder.
     # The folder ID is a long string of letters and numbers, not a human-readable name.
-    GOOGLE_DRIVE_FOLDER_ID = "RAG_APPLICATION"
+    GOOGLE_DRIVE_FOLDER_ID = "1ZB8Ur70bjRoZxrNOSOaxS6cSjcv6V1nN"
     
     loader = GoogleDriveLoader(
         folder_id=GOOGLE_DRIVE_FOLDER_ID, 
