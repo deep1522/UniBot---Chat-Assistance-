@@ -8,7 +8,8 @@ from dotenv import load_dotenv
 
 # FIX: Import the service_account module for a better way to handle credentials
 from google.oauth2 import service_account
-from langchain_community.document_loaders import GoogleDriveLoader, PyPDFDirectoryLoader
+# FIX: Use the new, non-deprecated GoogleDriveLoader
+from langchain_google_community import GoogleDriveLoader
 from langchain_community.embeddings import BedrockEmbeddings
 from langchain_community.llms.bedrock import Bedrock
 from langchain_pinecone import PineconeVectorStore
@@ -21,11 +22,19 @@ from pinecone import Pinecone as PineconeClient
 # Load environment variables
 load_dotenv()
 
-# FIX: Revert to using st.secrets for Streamlit Cloud deployment
-# The os.getenv approach is less reliable on Streamlit Cloud.
-aws_access_key_id = st.secrets["AWS_ACCESS_KEY_ID"]
-aws_secret_access_key = st.secrets["AWS_SECRET_ACCESS_KEY"]
-aws_region_name = st.secrets.get("AWS_DEFAULT_REGION", "us-east-1") # Use a default region if not specified
+# --- AWS & Pinecone Setup ---
+# A function to get credentials from environment variables (for local development)
+def get_aws_credentials():
+    aws_access_key_id = os.getenv("AWS_ACCESS_KEY_ID")
+    aws_secret_access_key = os.getenv("AWS_SECRET_ACCESS_KEY")
+    return aws_access_key_id, aws_secret_access_key
+
+def get_pinecone_api_key():
+    pinecone_api_key = os.getenv("PINECONE_API_KEY")
+    return pinecone_api_key
+
+aws_access_key_id, aws_secret_access_key = get_aws_credentials()
+aws_region_name = os.getenv("AWS_DEFAULT_REGION", "us-east-1") # Use a default region if not specified
 
 # Set up the Bedrock client and embeddings model
 bedrock = boto3.client(
@@ -36,65 +45,52 @@ bedrock = boto3.client(
 )
 bedrock_embeddings = BedrockEmbeddings(model_id="amazon.titan-embed-text-v2:0", client=bedrock)
 
-# Setup Pinecone with your API key from environment variables
-PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
+# Setup Pinecone with your API key
+PINECONE_API_KEY = get_pinecone_api_key()
 pc = PineconeClient(api_key=PINECONE_API_KEY)
 
 INDEX_NAME = "langchain"  # Pinecone index name
 
-# FIX: Function to handle Google credentials from Streamlit secrets
+# --- Google Drive Credentials Setup ---
 def setup_google_credentials():
     """
-    Reads Google credentials from Streamlit secrets and returns a credentials object.
+    Handles Google credentials for local environments by checking for a credentials.json file.
     """
-    if "GOOGLE_APPLICATION_CREDENTIALS" in st.secrets:
+    credentials_file = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+    if credentials_file and os.path.exists(credentials_file):
         try:
-            credentials_secret_value = st.secrets["GOOGLE_APPLICATION_CREDENTIALS"]
-
-            # FIX: Explicitly check if the secret value is a string before trying to load it as JSON.
-            if not isinstance(credentials_secret_value, str):
-                st.error("Error: `GOOGLE_APPLICATION_CREDENTIALS` secret is not a string. "
-                         "Please ensure you've pasted the JSON content directly as a single value, "
-                         "not as a TOML table.")
-                return None
-
-            credentials_dict = json.loads(credentials_secret_value)
-            credentials = service_account.Credentials.from_service_account_info(credentials_dict)
-            st.success("Google credentials set up successfully.")
+            credentials = service_account.Credentials.from_service_account_file(credentials_file)
+            st.success("Google credentials set up from local file.")
             return credentials
-            
-        except json.JSONDecodeError as e:
-            st.error(f"Error: Invalid JSON format in your `GOOGLE_APPLICATION_CREDENTIALS` secret. Details: {e}")
-            return None
         except Exception as e:
-            st.error(f"An unexpected error occurred while setting up Google credentials. Details: {e}")
+            st.error(f"Error loading local credentials.json file. Details: {e}")
             return None
-    
-    return None
+    else:
+        st.error("`credentials.json` file not found or GOOGLE_APPLICATION_CREDENTIALS not set for local development.")
+        return None
 
-# FIX: Update data_ingestion to use GoogleDriveLoader with credentials object
-def data_ingestion():
-    # Call the new function to get the credentials object
-    gdrive_credentials = setup_google_credentials()
+# --- Application Functions ---
+def data_ingestion(gdrive_credentials):
     if gdrive_credentials is None:
         st.error("Google Drive credentials are not available. Document ingestion failed.")
         return []
 
-    # IMPORTANT: Replace 'YOUR_FOLDER_ID' with the actual ID of your Google Drive folder.
-    GOOGLE_DRIVE_FOLDER_ID = "YOUR_FOLDER_ID"
+    GOOGLE_DRIVE_FOLDER_ID = "1ZB8Ur70bjRoZxrNOSOaxS6cSjcv6V1nN"
     
-    # Pass the credentials object to the GoogleDriveLoader
     loader = GoogleDriveLoader(
         folder_id=GOOGLE_DRIVE_FOLDER_ID,
         credentials=gdrive_credentials,
         recursive=False
     )
     
-    documents = loader.load()
-
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=10000, chunk_overlap=1000)
-    docs = text_splitter.split_documents(documents)
-    return docs
+    try:
+        documents = loader.load()
+        text_splitter = RecursiveCharacterTextSplitter(chunk_size=10000, chunk_overlap=1000)
+        docs = text_splitter.split_documents(documents)
+        return docs
+    except Exception as e:
+        st.error(f"Error loading documents from Google Drive. Details: {e}")
+        return []
 
 def get_vector_store(docs):
     try:
@@ -121,7 +117,8 @@ def get_llama2_llm():
     return llm
 
 prompt_template = """
-You are an assistant that answers questions based only on the provided context.
+You are an assistant that answers questions based ONLY on the provided context.
+Answer with information that is present in the context.
 
 <context>
 {context}
@@ -130,10 +127,10 @@ You are an assistant that answers questions based only on the provided context.
 Question: {question}
 
 Instructions:
-- Combine all the relevant information from the context related to the question.
-- Do not guess or add information that is not in the context.
-- If nothing in the context is relevant, reply exactly: "I don't have that information."
-- Give a detailed but clear answer.
+- If the question cannot be answered from the given context, you MUST reply with "I do not have that information.".
+- Do NOT use any external knowledge.
+- Your answer must be a single, detailed summary based on the relevant parts of the context.
+- Your answer must be truthful and accurate to the provided context.
 
 Assistant:
 """
@@ -156,17 +153,38 @@ def main():
 
     st.header("UNIBOT - AWS Bedrock + Pinecone")
 
+    gdrive_credentials = setup_google_credentials()
+    
+    # Initialize session state for messages
+    if 'status_message' not in st.session_state:
+        st.session_state['status_message'] = ""
+    if 'status_type' not in st.session_state:
+        st.session_state['status_type'] = "info"
+
     user_question = st.text_input("Here to help with your queries...")
 
     with st.sidebar:
         st.title("Update Documents:")
 
         if st.button("Update"):
+            st.session_state['status_message'] = ""
+            st.session_state['status_type'] = "info"
             with st.spinner("Processing..."):
-                docs = data_ingestion()
+                docs = data_ingestion(gdrive_credentials)
                 if docs:
                     get_vector_store(docs)
-                    st.success("✅ You are up-to-date.")
+                    st.session_state['status_message'] = "✅ You are up-to-date."
+                    st.session_state['status_type'] = "success"
+                else:
+                    st.session_state['status_message'] = "❌ Document ingestion failed. Please check the logs."
+                    st.session_state['status_type'] = "error"
+        
+        # FIX: Move the status message display to the sidebar
+        if st.session_state['status_message']:
+            if st.session_state['status_type'] == "success":
+                st.success(st.session_state['status_message'])
+            else:
+                st.error(st.session_state['status_message'])
 
     if st.button("Search"):
         with st.spinner("Processing..."):
