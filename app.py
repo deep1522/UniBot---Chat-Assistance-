@@ -166,6 +166,10 @@ def get_response_llm(llm, vectorstore, query):
     answer = qa({"query": query})
     return answer['result']
 
+# Define a callback function to clear the input
+def clear_input():
+    st.session_state.user_question_input = ""
+
 def main():
     st.set_page_config("Chat PDF with Pinecone")
 
@@ -183,7 +187,10 @@ def main():
     gdrive_credentials = setup_google_credentials()
 
     # FIX: Use the session state variable to control the value of the input
-    user_question = st.text_input("Here to help with your queries...", key="user_question_input")
+    user_question = st.text_input(
+        "Here to help with your queries...", 
+        key="user_question_input"
+    )
 
     with st.sidebar:
         st.title("Update Documents:")
@@ -207,7 +214,7 @@ def main():
             else:
                 st.error(st.session_state['status_message'])
 
-    if st.button("Search"):
+    if st.button("Search", on_click=clear_input):
         with st.spinner("Processing..."):
             vectorstore_pinecone = PineconeVectorStore.from_existing_index(
                 index_name=INDEX_NAME,
@@ -219,9 +226,6 @@ def main():
             # Display the question and response
             st.write(f"**Question:** {user_question}")
             st.write(response)
-            
-            # FIX: Clear the input field by setting the session state value
-            st.session_state.user_question_input = ""
             
             st.success("✅ Anything Else?")
 
