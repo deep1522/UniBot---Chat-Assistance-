@@ -171,9 +171,26 @@ def get_response_llm(llm, vectorstore, query):
         st.error(f"An error occurred during the search. Please check your Bedrock and Pinecone configurations. Details: {e}")
         return "An error occurred during the search. Please check the logs."
 
-# Define a callback function to clear the input
-def clear_input():
-    st.session_state.user_question_input = ""
+def handle_search():
+    """Captures and processes the query, then clears the input."""
+    if st.session_state.user_question_input:
+        with st.spinner("Processing..."):
+            user_question = st.session_state.user_question_input
+            vectorstore_pinecone = PineconeVectorStore.from_existing_index(
+                index_name=INDEX_NAME,
+                embedding=bedrock_embeddings
+            )
+            llm = get_llama2_llm()
+            response = get_response_llm(llm, vectorstore_pinecone, user_question)
+            
+            # Display the question and response
+            st.write(f"**Question:** {user_question}")
+            st.write(response)
+            
+            # Clear the input field after search
+            st.session_state.user_question_input = ""
+            
+            st.success("✅ Anything Else?")
 
 def main():
     st.set_page_config("Chat PDF with Pinecone")
@@ -185,14 +202,12 @@ def main():
         st.session_state['status_message'] = ""
     if 'status_type' not in st.session_state:
         st.session_state['status_type'] = "info"
-    # FIX: Initialize the session state key for the text input
     if 'user_question_input' not in st.session_state:
         st.session_state.user_question_input = ""
 
     gdrive_credentials = setup_google_credentials()
 
-    # FIX: Use the session state variable to control the value of the input
-    user_question = st.text_input(
+    st.text_input(
         "Here to help with your queries...", 
         key="user_question_input"
     )
@@ -219,20 +234,7 @@ def main():
             else:
                 st.error(st.session_state['status_message'])
 
-    if st.button("Search", on_click=clear_input):
-        with st.spinner("Processing..."):
-            vectorstore_pinecone = PineconeVectorStore.from_existing_index(
-                index_name=INDEX_NAME,
-                embedding=bedrock_embeddings
-            )
-            llm = get_llama2_llm()
-            response = get_response_llm(llm, vectorstore_pinecone, user_question)
-            
-            # Display the question and response
-            st.write(f"**Question:** {user_question}")
-            st.write(response)
-            
-            st.success("✅ Anything Else?")
+    st.button("Search", on_click=handle_search)
 
 if __name__ == "__main__":
     main()
