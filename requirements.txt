@@ -28,3 +28,4 @@ validators==0.28.1
 pinecone
 langchain_pinecone
 langchain_community
+googleapiclient
