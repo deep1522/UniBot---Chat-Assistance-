@@ -102,7 +102,7 @@ def data_ingestion(gdrive_credentials):
     try:
         documents = loader.load()
         # FIX: Changed chunk size and overlap for better retrieval performance
-        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+        text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=100)
         docs = text_splitter.split_documents(documents)
         return docs
     except Exception as e:
@@ -159,7 +159,7 @@ def get_response_llm(llm, vectorstore, query):
     qa = RetrievalQA.from_chain_type(
         llm=llm,
         chain_type="stuff",
-        retriever=vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": 5}),
+        retriever=vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": 10}),
         return_source_documents=True,
         chain_type_kwargs={"prompt": PROMPT}
     )
