@@ -171,6 +171,7 @@ def get_response_llm(llm, vectorstore, query):
         st.error(f"An error occurred during the search. Please check your Bedrock and Pinecone configurations. Details: {e}")
         return "An error occurred during the search. Please check the logs."
 
+# Define a callback function to clear the input
 def handle_search():
     """Captures and processes the query, then clears the input."""
     if st.session_state.user_question_input:
@@ -183,9 +184,9 @@ def handle_search():
             llm = get_llama2_llm()
             response = get_response_llm(llm, vectorstore_pinecone, user_question)
             
-            # Display the question and response
-            st.write(f"**Question:** {user_question}")
-            st.write(response)
+            # FIX: Store the response in session state
+            st.session_state['last_response'] = response
+            st.session_state['last_question'] = user_question
             
             # Clear the input field after search
             st.session_state.user_question_input = ""
@@ -197,13 +198,17 @@ def main():
 
     st.header("UNIBOT - AWS Bedrock + Pinecone")
     
-    # Initialize session state for messages
+    # Initialize session state for messages and responses
     if 'status_message' not in st.session_state:
         st.session_state['status_message'] = ""
     if 'status_type' not in st.session_state:
         st.session_state['status_type'] = "info"
     if 'user_question_input' not in st.session_state:
         st.session_state.user_question_input = ""
+    if 'last_response' not in st.session_state:
+        st.session_state['last_response'] = ""
+    if 'last_question' not in st.session_state:
+        st.session_state['last_question'] = ""
 
     gdrive_credentials = setup_google_credentials()
 
@@ -230,11 +235,17 @@ def main():
         
         if st.session_state['status_message']:
             if st.session_state['status_type'] == "success":
-                st.success(st.session_state['status_message'])
+                st.sidebar.success(st.session_state['status_message'])
             else:
-                st.error(st.session_state['status_message'])
+                st.sidebar.error(st.session_state['status_message'])
 
     st.button("Search", on_click=handle_search)
+
+    # FIX: Display the last question and response in the main window
+    if st.session_state['last_response']:
+        st.write(f"**Question:** {st.session_state['last_question']}")
+        st.write(st.session_state['last_response'])
+        st.success("✅ Anything Else?")
 
 if __name__ == "__main__":
     main()
