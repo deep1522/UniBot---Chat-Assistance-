@@ -29,3 +29,8 @@ pinecone
 langchain_pinecone
 langchain_community
 googleapiclient
+google-api-python-client
+google-auth-httplib2
+google-auth-oauthlib
+langchain-google-community
+unstructured
