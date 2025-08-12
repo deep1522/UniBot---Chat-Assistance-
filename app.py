@@ -19,22 +19,21 @@ from langchain.chains import RetrievalQA
 
 from pinecone import Pinecone as PineconeClient
 
-# Load environment variables
+# Load environment variables (for local dev)
 load_dotenv()
 
 # --- AWS & Pinecone Setup ---
-# A function to get credentials from environment variables (for local development)
 def get_aws_credentials():
-    aws_access_key_id = os.getenv("AWS_ACCESS_KEY_ID")
-    aws_secret_access_key = os.getenv("AWS_SECRET_ACCESS_KEY")
+    # Use st.secrets on Streamlit Cloud, fallback to os.getenv locally
+    aws_access_key_id = st.secrets.get("AWS_ACCESS_KEY_ID") or os.getenv("AWS_ACCESS_KEY_ID")
+    aws_secret_access_key = st.secrets.get("AWS_SECRET_ACCESS_KEY") or os.getenv("AWS_SECRET_ACCESS_KEY")
     return aws_access_key_id, aws_secret_access_key
 
 def get_pinecone_api_key():
-    pinecone_api_key = os.getenv("PINECONE_API_KEY")
-    return pinecone_api_key
+    return st.secrets.get("PINECONE_API_KEY") or os.getenv("PINECONE_API_KEY")
 
 aws_access_key_id, aws_secret_access_key = get_aws_credentials()
-aws_region_name = os.getenv("AWS_DEFAULT_REGION", "us-east-1") # Use a default region if not specified
+aws_region_name = st.secrets.get("AWS_DEFAULT_REGION", "us-east-1") or os.getenv("AWS_DEFAULT_REGION", "us-east-1")
 
 # Set up the Bedrock client and embeddings model
 bedrock = boto3.client(
@@ -54,19 +53,35 @@ INDEX_NAME = "langchain"  # Pinecone index name
 # --- Google Drive Credentials Setup ---
 def setup_google_credentials():
     """
-    Handles Google credentials for local environments by checking for a credentials.json file.
+    Handles Google credentials for both cloud and local environments.
     """
-    credentials_file = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
-    if credentials_file and os.path.exists(credentials_file):
+    credentials_source = st.secrets.get("GOOGLE_APPLICATION_CREDENTIALS") or os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+    
+    if credentials_source:
         try:
-            credentials = service_account.Credentials.from_service_account_file(credentials_file)
-            st.success("Google credentials set up from local file.")
+            # Try to load as a JSON string (for Streamlit Cloud)
+            credentials_dict = json.loads(credentials_source)
+            credentials = service_account.Credentials.from_service_account_info(credentials_dict)
+            st.success("Google credentials set up from Streamlit secrets.")
             return credentials
+        except json.JSONDecodeError:
+            # If it's not a JSON string, assume it's a file path (for local dev)
+            if os.path.exists(credentials_source):
+                try:
+                    credentials = service_account.Credentials.from_service_account_file(credentials_source)
+                    st.success("Google credentials set up from local file.")
+                    return credentials
+                except Exception as e:
+                    st.error(f"Error loading local credentials file. Details: {e}")
+                    return None
+            else:
+                st.error(f"Error: Credentials source is not a valid JSON string and file at path '{credentials_source}' was not found.")
+                return None
         except Exception as e:
-            st.error(f"Error loading local credentials.json file. Details: {e}")
+            st.error(f"An unexpected error occurred with Google credentials. Details: {e}")
             return None
     else:
-        st.error("`credentials.json` file not found or GOOGLE_APPLICATION_CREDENTIALS not set for local development.")
+        st.error("`GOOGLE_APPLICATION_CREDENTIALS` not found in secrets or environment.")
         return None
 
 # --- Application Functions ---
@@ -118,7 +133,7 @@ def get_llama2_llm():
 
 prompt_template = """
 You are an assistant that answers questions based ONLY on the provided context.
-Answer with information that is present in the context.
+Answer with information that is directly and explicitly present in the context.
 
 <context>
 {context}
@@ -152,14 +167,14 @@ def main():
     st.set_page_config("Chat PDF with Pinecone")
 
     st.header("UNIBOT - AWS Bedrock + Pinecone")
-
-    gdrive_credentials = setup_google_credentials()
     
     # Initialize session state for messages
     if 'status_message' not in st.session_state:
         st.session_state['status_message'] = ""
     if 'status_type' not in st.session_state:
         st.session_state['status_type'] = "info"
+
+    gdrive_credentials = setup_google_credentials()
 
     user_question = st.text_input("Here to help with your queries...")
 
@@ -179,7 +194,6 @@ def main():
                     st.session_state['status_message'] = "❌ Document ingestion failed. Please check the logs."
                     st.session_state['status_type'] = "error"
         
-        # FIX: Move the status message display to the sidebar
         if st.session_state['status_message']:
             if st.session_state['status_type'] == "success":
                 st.success(st.session_state['status_message'])
