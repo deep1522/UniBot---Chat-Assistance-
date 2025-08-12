@@ -176,10 +176,12 @@ def main():
         st.session_state['status_message'] = ""
     if 'status_type' not in st.session_state:
         st.session_state['status_type'] = "info"
+    if 'user_question' not in st.session_state:
+        st.session_state.user_question = ""
 
     gdrive_credentials = setup_google_credentials()
 
-    user_question = st.text_input("Here to help with your queries...")
+    user_question = st.text_input("Here to help with your queries...", key="user_question_input")
 
     with st.sidebar:
         st.title("Update Documents:")
@@ -210,7 +212,13 @@ def main():
                 embedding=bedrock_embeddings
             )
             llm = get_llama2_llm()
-            st.write(get_response_llm(llm, vectorstore_pinecone, user_question))
+            response = get_response_llm(llm, vectorstore_pinecone, user_question)
+            st.write(response)
+            
+            # FIX: Clear the input field after search
+            st.session_state.user_question = ""
+            st.session_state.user_question_input = ""
+            
             st.success("✅ Anything Else?")
 
 if __name__ == "__main__":
