@@ -3,11 +3,11 @@ import os
 import sys
 import boto3
 import streamlit as st
-import tempfile
 from botocore.exceptions import ClientError
 from dotenv import load_dotenv
 
-# FIX: Import GoogleDriveLoader and related dependencies
+# FIX: Import the service_account module for a better way to handle credentials
+from google.oauth2 import service_account
 from langchain_community.document_loaders import GoogleDriveLoader, PyPDFDirectoryLoader
 from langchain_community.embeddings import BedrockEmbeddings
 from langchain_community.llms.bedrock import Bedrock
@@ -45,51 +45,47 @@ INDEX_NAME = "langchain"  # Pinecone index name
 # FIX: Function to handle Google credentials from Streamlit secrets
 def setup_google_credentials():
     """
-    Reads Google credentials from Streamlit secrets, validates the JSON,
-    and sets up a temporary file for authentication.
+    Reads Google credentials from Streamlit secrets and returns a credentials object.
     """
     if "GOOGLE_APPLICATION_CREDENTIALS" in st.secrets:
         try:
-            # First, check if the content is a valid JSON string
             credentials_json = st.secrets["GOOGLE_APPLICATION_CREDENTIALS"]
-            json.loads(credentials_json)
-
-            # If it's valid, create a temporary file to store the credentials
-            with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".json") as temp_file:
-                temp_file.write(credentials_json)
-                temp_file_path = temp_file.name
             
-            # Set the environment variable to the path of the temporary file
-            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = temp_file_path
-            st.success("Google credentials set up successfully.")
+            # Create a dictionary from the JSON string
+            credentials_dict = json.loads(credentials_json)
 
+            # Create a credentials object from the dictionary
+            credentials = service_account.Credentials.from_service_account_info(credentials_dict)
+            st.success("Google credentials set up successfully.")
+            return credentials
+            
         except json.JSONDecodeError as e:
-            st.error(f"Error: Invalid JSON format in your `GOOGLE_APPLICATION_CREDENTIALS` secret. Please check for syntax errors. Details: {e}")
-            # Do not proceed with the loader if credentials are bad
-            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = ""
+            st.error(f"Error: Invalid JSON format in your `GOOGLE_APPLICATION_CREDENTIALS` secret. Details: {e}")
+            return None
         except Exception as e:
             st.error(f"An unexpected error occurred while setting up Google credentials. Details: {e}")
-            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = ""
-
-# FIX: Update data_ingestion to use GoogleDriveLoader with credentials
-def data_ingestion():
-    # To use Google Drive Loader, you need to set up a service account and save the
-    # key file as `credentials.json`.
-    # Make sure to set the `GOOGLE_APPLICATION_CREDENTIALS` environment variable in Streamlit secrets
-    # to point to this file.
-    # IMPORTANT: To avoid ModuleNotFoundError, you must also add the following dependencies
-    # to your requirements.txt file:
-    # - google-api-python-client
-    # - google-auth-httplib2
-    # - google-auth-oauthlib
-    # IMPORTANT: Replace 'YOUR_FOLDER_ID' with the actual ID of your Google Drive folder.
-    # The folder ID is a long string of letters and numbers, not a human-readable name.
-    GOOGLE_DRIVE_FOLDER_ID = "1ZB8Ur70bjRoZxrNOSOaxS6cSjcv6V1nN"
+            return None
     
+    return None
+
+# FIX: Update data_ingestion to use GoogleDriveLoader with credentials object
+def data_ingestion():
+    # Call the new function to get the credentials object
+    gdrive_credentials = setup_google_credentials()
+    if gdrive_credentials is None:
+        st.error("Google Drive credentials are not available. Document ingestion failed.")
+        return []
+
+    # IMPORTANT: Replace 'YOUR_FOLDER_ID' with the actual ID of your Google Drive folder.
+    GOOGLE_DRIVE_FOLDER_ID = "YOUR_FOLDER_ID"
+    
+    # Pass the credentials object to the GoogleDriveLoader
     loader = GoogleDriveLoader(
-        folder_id=GOOGLE_DRIVE_FOLDER_ID, 
+        folder_id=GOOGLE_DRIVE_FOLDER_ID,
+        credentials=gdrive_credentials,
         recursive=False
     )
+    
     documents = loader.load()
 
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=10000, chunk_overlap=1000)
@@ -156,9 +152,6 @@ def main():
 
     st.header("UNIBOT - AWS Bedrock + Pinecone")
 
-    # FIX: Call the credential setup function before any other code that might need it
-    setup_google_credentials()
-    
     user_question = st.text_input("Here to help with your queries...")
 
     with st.sidebar:
