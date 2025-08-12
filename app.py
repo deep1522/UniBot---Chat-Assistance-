@@ -3,6 +3,7 @@ import os
 import sys
 import boto3
 import streamlit as st
+import tempfile
 from botocore.exceptions import ClientError
 from dotenv import load_dotenv
 
@@ -41,16 +42,35 @@ pc = PineconeClient(api_key=PINECONE_API_KEY)
 
 INDEX_NAME = "langchain"  # Pinecone index name
 
+# FIX: Function to handle Google credentials from Streamlit secrets
+def setup_google_credentials():
+    """Reads Google credentials from Streamlit secrets and sets up a temporary file."""
+    if "GOOGLE_APPLICATION_CREDENTIALS" in st.secrets:
+        # Create a temporary file to store the credentials
+        with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".json") as temp_file:
+            # Write the JSON content from secrets into the temporary file
+            temp_file.write(st.secrets["GOOGLE_APPLICATION_CREDENTIALS"])
+            temp_file_path = temp_file.name
+        
+        # Set the environment variable to the path of the temporary file
+        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = temp_file_path
+        st.success("Google credentials set up successfully.")
+
 # FIX: Update data_ingestion to use GoogleDriveLoader with credentials
 def data_ingestion():
     # To use Google Drive Loader, you need to set up a service account and save the
     # key file as `credentials.json`.
     # Make sure to set the `GOOGLE_APPLICATION_CREDENTIALS` environment variable in Streamlit secrets
     # to point to this file.
+    # IMPORTANT: To avoid ModuleNotFoundError, you must also add the following dependencies
+    # to your requirements.txt file:
+    # - google-api-python-client
+    # - google-auth-httplib2
+    # - google-auth-oauthlib
     # IMPORTANT: Replace 'YOUR_FOLDER_ID' with the actual ID of your Google Drive folder.
     # The folder ID is a long string of letters and numbers, not a human-readable name.
-    GOOGLE_DRIVE_FOLDER_ID = "RAG_APPLICATION"
-
+    GOOGLE_DRIVE_FOLDER_ID = "YOUR_FOLDER_ID"
+    
     loader = GoogleDriveLoader(
         folder_id=GOOGLE_DRIVE_FOLDER_ID, 
         recursive=False
@@ -121,6 +141,9 @@ def main():
 
     st.header("UNIBOT - AWS Bedrock + Pinecone")
 
+    # FIX: Call the credential setup function before any other code that might need it
+    setup_google_credentials()
+    
     user_question = st.text_input("Here to help with your queries...")
 
     with st.sidebar:
