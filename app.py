@@ -21,7 +21,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Set up the Bedrock client and embeddings model
-bedrock = boto3.client(service_name="bedrock-runtime")
+bedrock = boto3.client(service_name="bedrock-runtime",region_name='us-east-1')
 # Note: The 'amazon.titan-embed-text-v2:0' model produces vectors with a dimension of 1024.
 bedrock_embeddings = BedrockEmbeddings(model_id="amazon.titan-embed-text-v2:0", client=bedrock)
 
