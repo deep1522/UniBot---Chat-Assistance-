@@ -141,8 +141,8 @@ def get_llama2_llm():
     return llm
 
 prompt_template = """
-You are an assistant that answers questions based ONLY on the provided context.
-Answer with information that is directly and explicitly present in the context.
+You are an assistant that provides comprehensive and truthful answers based ONLY on the provided context.
+Your goal is to use all relevant information from the documents to answer the user's query as thoroughly as possible.
 
 <context>
 {context}
@@ -151,10 +151,10 @@ Answer with information that is directly and explicitly present in the context.
 Question: {question}
 
 Instructions:
-- If the question cannot be answered from the given context, you MUST reply with "I do not have that information.".
-- Do NOT use any external knowledge.
-- Your answer must be a single, detailed summary based on the relevant parts of the context.
-- Your answer must be truthful and accurate to the provided context.
+- If the question can be answered from the provided context, include ALL relevant details.
+- Do NOT use any information from outside of the provided context.
+- If the context does not contain any information relevant to the question, you MUST reply with "I do not have that information.".
+- Your answer must be factual and directly supported by the context.
 
 Assistant:
 """
