@@ -191,7 +191,7 @@ def handle_search():
             # Clear the input field after search
             st.session_state.user_question_input = ""
             
-            st.success("✅ Anything Else?")
+          
 
 def main():
     st.set_page_config("Chat PDF with Pinecone")
