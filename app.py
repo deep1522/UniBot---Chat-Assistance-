@@ -81,7 +81,7 @@ def data_ingestion():
         return []
 
     # IMPORTANT: Replace 'YOUR_FOLDER_ID' with the actual ID of your Google Drive folder.
-    GOOGLE_DRIVE_FOLDER_ID = "YOUR_FOLDER_ID"
+    GOOGLE_DRIVE_FOLDER_ID = "1ZB8Ur70bjRoZxrNOSOaxS6cSjcv6V1nN"
     
     # Pass the credentials object to the GoogleDriveLoader
     loader = GoogleDriveLoader(
