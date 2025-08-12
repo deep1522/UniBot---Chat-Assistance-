@@ -176,11 +176,13 @@ def main():
         st.session_state['status_message'] = ""
     if 'status_type' not in st.session_state:
         st.session_state['status_type'] = "info"
+    # FIX: Initialize the session state key for the text input
     if 'user_question_input' not in st.session_state:
         st.session_state.user_question_input = ""
 
     gdrive_credentials = setup_google_credentials()
 
+    # FIX: Use the session state variable to control the value of the input
     user_question = st.text_input("Here to help with your queries...", key="user_question_input")
 
     with st.sidebar:
@@ -218,7 +220,7 @@ def main():
             st.write(f"**Question:** {user_question}")
             st.write(response)
             
-            # FIX: Clear the input field for next queries
+            # FIX: Clear the input field by setting the session state value
             st.session_state.user_question_input = ""
             
             st.success("✅ Anything Else?")
